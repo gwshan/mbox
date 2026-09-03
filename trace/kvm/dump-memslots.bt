@@ -1,0 +1,56 @@
+#!/usr/bin/env bpftrace
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2026  Red Hat, Inc.
+ *
+ * Author: Gavin Shan <gshan@redhat.com>
+ *
+ * Iterate the files associated with qemu process, locate the one associated
+ * with "struct kvm". From there, the memory slots are dumped.
+ */
+
+BEGIN {
+    printf("------------------------------------------\n");
+}
+
+iter:task_file / strcontains(ctx->task->comm, "qemu") / {
+    if (!strncmp(path(ctx->file->f_path), "anon_inode:kvm-vm", 17)) {
+        $kvm = (struct kvm *)(ctx->file->private_data);
+        $memslots = (struct kvm_memslots *)($kvm->memslots[0]);
+
+        printf("\n");
+        printf("<%s>   fd=%d   <%s>\n", ctx->task->comm, ctx->fd, path(ctx->file->f_path));
+        printf("\n");
+
+        printf("kvm->memslots[0]\n");
+        printf("    generation          0x%lx\n", (uint64)($memslots->generation));        
+        printf("    last_used_slot      %ld\n",   (int64)($memslots->last_used_slot.counter));
+        printf("\n");
+
+        $bucket = (uint64)0;
+        while ($bucket < 128) {
+            if ($memslots->id_hash[$bucket].first) {
+                $node = (struct hlist_node *)($memslots->id_hash[$bucket].first);
+                $slot = (struct kvm_memory_slot *)((uint64)($node) - $memslots->node_idx * 16);
+
+                printf("bucket: %03d    slot: 0x%lx\n", $bucket, (uint64)($slot));
+                printf("    id                %d\n",    $slot->id);
+                printf("    as_id             %d\n",    $slot->as_id);
+                printf("    flags             0x%x\n",  $slot->flags);
+                printf("    base_gfn          0x%lx\n", $slot->base_gfn);
+                printf("    npages            0x%lx\n", $slot->npages);
+                printf("    dirty_bitmap      0x%lx\n", (uint64)($slot->dirty_bitmap));
+                printf("    userspace_addr    0x%lx\n", $slot->userspace_addr);
+                printf("    gmem.file         0x%lx\n", (uint64)($slot->gmem.file));
+                printf("    gmem.pgoff        0x%lx\n", $slot->gmem.pgoff);
+            }
+
+            $bucket++;
+        }
+    }
+}
+
+END {
+    printf("------------------------------------------\n");
+}
+

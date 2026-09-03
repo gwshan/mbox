@@ -1,0 +1,86 @@
+#!/usr/bin/env bpftrace
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2026  Red Hat, Inc.
+ *
+ * Author: Gavin Shan <gshan@redhat.com>
+ *
+ * Dump the page table entry for the specified task and virtual address.
+ * This accepts two parameters: ${pid}-${virtual-address}.
+ *
+ */
+
+BEGIN {
+    printf("------------------------------------------\n");
+}
+
+iter:task_vma / ctx->task->pid == $1 / {
+    $vma = ctx->vma;
+    if ((uint64)$2 >= $vma->vm_start && (uint64)$2 < $vma->vm_end) {
+        printf("\n");
+        printf("struct vm_area_struct:\n");
+        printf("    vm_start            0x%lx\n",    $vma->vm_start);
+        printf("    vm_end              0x%lx\n",    $vma->vm_end);
+        printf("    vm_page_prot        0x%016lx\n", $vma->vm_page_prot.pgprot);
+        printf("    vm_flags            0x%016lx\n", $vma->flags.__vma_flags[0]);
+        printf("    anon_vma            0x%lx\n",    (uint64)($vma->anon_vma));
+        printf("    vm_ops              0x%lx\n",    (uint64)($vma->vm_ops));
+        printf("    vm_file             0x%lx\n",    (uint64)($vma->vm_file));
+        printf("    vm_private_data     0x%lx\n",    (uint64)($vma->vm_private_data));
+        printf("\n");
+
+        $addr = (uint64)$2;
+        $memstart_addr = *kaddr("memstart_addr");
+        $is_table = (uint64)0;
+
+        /* PGD */
+        $offset = (($addr >> 39) & 0x1ff) * 8;
+        $entryp = (uint64 *)((uint64)($vma->vm_mm->pgd) + $offset);
+        $entry = *(uint64 *)($entryp);
+        $is_table = $entry & 1; // PGD only can point to a table of PUDs
+        printf("Address    0x%016lx\n", $addr);
+        printf("    PGD    0x%016lx\n", $entry);
+
+        /* PUD */ 
+        if ($is_table) {
+            $offset = (($addr >> 30) & 0x1ff) * 8;
+            $entryp = (uint64 *)(($entry & 0x3fffffffff000) - $memstart_addr + 0xffff000000000000 + $offset);
+            $entry = *(uint64 *)($entryp);
+            $is_table = $entry & 0x2; // PUD can be a leaf
+            printf("    PUD    0x%016lx\n", $entry);
+
+            if (!$is_table && ($entry & 0x1)) {
+                printf("    PHYS   0x%016lx\n", ($entry & 0x3fffffffff000));
+            } 
+        }
+
+        /* PMD */
+        if ($is_table) {
+            $offset = (($addr >> 21) & 0x1ff) * 8;
+            $entryp = (uint64 *)(($entry & 0x3fffffffff000) - $memstart_addr + 0xffff000000000000 + $offset);
+            $entry = *(uint64 *)($entryp);
+            $is_table = $entry & 0x2; // PMD can be a leaf
+            printf("    PMD    0x%016lx\n", $entry);
+            
+            if (!$is_table && ($entry& 0x1)) {
+                printf("    PHYS   0x%016lx\n", ($entry & 0x3fffffffff000));
+            } 
+        }
+
+        /* PTE */
+        if ($is_table) {
+            $offset = (($addr >> 12) & 0x1ff) * 8;
+            $entryp = (uint64 *)(($entry & 0x3fffffffff000) - $memstart_addr + 0xffff000000000000 + $offset);
+            $entry = *(uint64 *)($entryp);
+            printf("    PTE    0x%016lx\n", $entry);
+
+            if ($entry & 0x1) {
+                printf("    PHYS   0x%016lx\n", ($entry & 0x3fffffffff000));
+            }
+        }
+    }
+}
+
+END {
+    printf("------------------------------------------\n");
+}
