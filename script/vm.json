@@ -1,0 +1,179 @@
+{
+  "vms": [
+    {
+      "name": "arm64",
+      "binary": "/home/gavin/sandbox/qemu.main/build/qemu-system-aarch64",
+      "gdb_tcp_port": "6666",
+      "qmp_tcp_port": "5555",
+      "accel": [
+        {
+          "type": "kvm"
+        }
+      ],
+      "machine": [
+        {
+          "type": "virt",
+          "gic-version": "host",
+          "nvdimm" : "on"
+        }
+      ],
+      "cpu": [
+        {
+          "type": "host",
+          "smp": [
+            {
+              "maxcpus": "8",
+              "cpus": "8",
+              "sockets": "2",
+              "clusters": "2",
+              "cores": "2",
+              "threads": "1"
+            }
+          ]
+        }
+      ],
+      "memory": [
+        {
+          "mem": "4G",
+          "maxmem": "64G",
+          "slots": "16",
+          "mem-slots": [
+            {
+              "available": "yes",
+              "type": "ram",
+              "id": "mem0",
+              "size": "2G",
+              "mem-path": "hugetlbfs-2MB"
+            },
+            {
+              "available": "yes",
+              "type": "ram",
+              "id": "mem1",
+              "size": "2G",
+              "mem-path": "hugetlbfs-2MB"
+            }
+          ],
+          "numa-nodes": [
+            {
+              "available": "yes",
+              "nodeid": "0",
+              "memdev": "mem0",
+              "cpus": "0-3"
+            },
+            {
+              "available": "yes",
+              "nodeid": "1",
+              "memdev": "mem1",
+              "cpus": "4-7"
+            }
+          ]
+        }
+      ],
+      "image": [
+        {
+          "firmware_path": "/home/gavin/sandbox/qemu.main/build/pc-bios",
+          "firmware": "/home/gavin/sandbox/qemu.main/build/pc-bios/edk2-aarch64-code.fd",
+          "kernel": "/home/gavin/sandbox/linux.guest/arch/arm64/boot/Image",
+          "kernel_args": "memhp_default_state=online_movable",
+          "initrd": "/home/gavin/sandbox/images/rootfs.cpio.xz"
+        }
+      ],
+      "device": [
+        {
+          "available": "no",
+          "type": "nvdimm",
+          "id": "nvdimm0",
+          "mem-path": "/home/gavin/sandbox/images/nvdimm0.qcow2",
+          "size": "1G",
+          "slot": "0",
+          "node": "0"
+        },
+        {
+          "available": "no",
+          "type": "nvdimm",
+          "id": "nvdimm1",
+          "mem-path": "/home/gavin/sandbox/images/nvdimm1.qcow2",
+          "size": "1G",
+          "slot": "1",
+          "node": "1"
+        },
+        {
+          "available": "no",
+          "type": "virtio-blk-pci",
+          "id": "virtio-blk0",
+          "file": "/home/gavin/sandbox/images/disk.qcow2"
+        },
+        {
+          "available": "yes",
+          "type": "virtio-net-pci",
+          "id": "virtio-net0",
+          "vhost": "true"
+        },
+        {
+          "available": "no",
+          "type": "virtio-mem-pci",
+          "id": "virtio-mem0",
+          "size": "512M",
+          "requested-size": "0",
+          "node": "0"
+        },
+        {
+          "available": "no",
+          "type": "virtio-mem-pci",
+          "id": "virtio-mem1",
+          "size": "512M",
+          "requested-size": "0",
+          "node" : "1"
+        },
+        {
+          "available": "no",
+          "type": "virtio-pmem-pci",
+          "id": "virtio-pmem0",
+          "size": "512M",
+          "node": "0"
+        },
+        {
+          "available": "no",
+          "type": "virtio-pmem-pci",
+          "id": "virtio-pmem1",
+          "size": "512M",
+          "node" : "1"
+        },
+        {
+          "available": "no",
+          "type": "virtio-balloon-pci",
+          "id": "virtio-balloon0",
+          "free-page-reporting": "yes"
+        },
+        {
+          "available": "no",
+          "type": "virtio-rng-pci",
+          "id": "virtio-rng0",
+          "filename": "/dev/random"
+        },
+        {
+          "available": "no",
+          "type": "pvpanic-pci",
+          "id": "pvpanic-pci0"
+        },
+        {
+          "available": "no",
+          "type": "pci-testdev",
+          "id": "pci-test0"
+        },
+        {
+          "available": "no",
+          "type": "nvme",
+          "id": "nvme0",
+          "file": "/home/gavin/sandbox/images/nvme0.qcow2"
+        },
+        {
+          "available": "no",
+          "type": "nvme",
+          "id": "nvme1",
+          "file": "/home/gavin/sandbox/images/nvme1.qcow2"
+        }
+      ]
+    }
+  ]
+}
