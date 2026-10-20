@@ -5,13 +5,13 @@
 #
 # Copyright (c) 2026 Red Hat, Inc.
 #
-# Authors:
-#  Gavin Shan <gshan@redhat.com>
+# Author: Gavin Shan <gshan@redhat.com>
 #
 # This work is licensed under the terms of the GNU GPL, version 2 or
 # later.  See the COPYING file in the top-level directory.
 #
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -105,14 +105,23 @@ class HugeTLBSetting:
         if not self.saved:
             return
 
-        # The base configurations to "/sys/kernel/mm/hugepages"
+        # Sort out the default huge page size
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        default_hugepage_size = ((page_size >> 3) * page_size) >> 10
+
+        # The base configurations to "/sys/kernel/mm/hugepages".
+        # For "demote_size", the written value should be equal to
+        # or larger than the default hage page size, and smaller
+        # than the huge page size corresponding to the specific
+        # sysfs entry
         root = Path(HUGETLB_SYSFS_PATH)
         while len(self.configs) > 0:
             config = self.configs.pop()
             entry = (root / f"hugepages-{config.hugepage_size}kB")
-            # FIXME: val >= PMD_SIZE and val < config.hugepage_size
-            # if (entry / "demote_size").exists():
-            #    (entry / "demote_size").write_text(f"{config.demote_size}kB")
+            if (entry / "demote_size").exists() and \
+               config.demote_size >= default_hugepage_size and \
+               config.demote_size < config.hugepage_size:
+                (entry / "demote_size").write_text(f"{config.demote_size}kB")
             if (entry / "nr_hugepages").exists():
                 (entry / "nr_hugepages").write_text(f"{config.nr_hugepages}")
             if (entry / "nr_hugepages_mempolicy").exists():
@@ -121,6 +130,8 @@ class HugeTLBSetting:
                 (entry / "nr_overcommit_hugepages").write_text(f"{config.nr_overcommit_hugepages}")
 
         # Node specific configurations to "/sys/devices/system/node"
+        # The requirements for the written value to "demote_size" entry
+        # can be seen above.
         root = Path(HUGETLB_NODE_SYSFS_PATH)
         while len(self.node_configs) > 0:
             config = self.node_configs.pop()
@@ -128,9 +139,10 @@ class HugeTLBSetting:
                      f"hugepages" / f"hugepages-{config.hugepage_size}kB")
             if (entry / "nr_hugepages").exists():
                 (entry / "nr_hugepages").write_text(f"{config.nr_hugepages}")
-            # FIXME: val >= PMD_SIZE and val < config.hugepage_size
-            # if (entry / "demote_size").exists():
-            #    (entry / "demote_size").write_text(f"{config.demote_size}kB")
+            if (entry / "demote_size").exists() and \
+               config.demote_size >= default_hugepage_size and \
+               config.demote_size < config.hugepage_size:
+                (entry / "demote_size").write_text(f"{config.demote_size}kB")
 
         # Indicator that the configurations have ben restored
         self.saved = False

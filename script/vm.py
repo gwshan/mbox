@@ -7,8 +7,7 @@
 #
 # Copyright (c) 2026 Red Hat, Inc.
 #
-# Authors:
-#  Gavin Shan <gshan@redhat.com>
+# Author: Gavin Shan <gshan@redhat.com>
 #
 # This work is licensed under the terms of the GNU GPL, version 2 or
 # later.  See the COPYING file in the top-level directory.
