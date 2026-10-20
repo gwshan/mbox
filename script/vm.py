@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from lib.mm.hugetlbfs import HugeTLBSetting
 
 def get_mem_size(size="", prefix="", suffix=""):
     multipliers = {
@@ -423,6 +424,11 @@ def main():
 
     # Launch the VM
     for vm in vms:
+        # Save hugetlb setting
+        hugetlb_setting = HugeTLBSetting()
+        hugetlb_setting.save()
+
+        # Build the command lines
         cmd = build_command(vm)
         if args.dry_run:
             print(f"")
@@ -431,6 +437,9 @@ def main():
             print(f"{cmd}")
         else:
              subprocess.run(cmd, shell=True, check=True)
+
+        # Restore hugetlb setting
+        hugetlb_setting.restore()
 
 if __name__ == "__main__":
     main()

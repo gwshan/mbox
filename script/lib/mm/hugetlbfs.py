@@ -109,9 +109,10 @@ class HugeTLBSetting:
         root = Path(HUGETLB_SYSFS_PATH)
         while len(self.configs) > 0:
             config = self.configs.pop()
-            entry = (root / f"{config.hugepage_size}kB")
-            if (entry / "demote_size").exists():
-                (entry / "demote_size").write_text(f"{config.demote_size}kB")
+            entry = (root / f"hugepages-{config.hugepage_size}kB")
+            # FIXME: val >= PMD_SIZE and val < config.hugepage_size
+            # if (entry / "demote_size").exists():
+            #    (entry / "demote_size").write_text(f"{config.demote_size}kB")
             if (entry / "nr_hugepages").exists():
                 (entry / "nr_hugepages").write_text(f"{config.nr_hugepages}")
             if (entry / "nr_hugepages_mempolicy").exists():
@@ -123,11 +124,13 @@ class HugeTLBSetting:
         root = Path(HUGETLB_NODE_SYSFS_PATH)
         while len(self.node_configs) > 0:
             config = self.node_configs.pop()
-            entry = (root / f"node{config.node_id}" / f"hugepages-{config.hugepage_size}kB")
+            entry = (root / f"node{config.node_id}" / \
+                     f"hugepages" / f"hugepages-{config.hugepage_size}kB")
             if (entry / "nr_hugepages").exists():
                 (entry / "nr_hugepages").write_text(f"{config.nr_hugepages}")
-            if (entry / "demote_size").exists():
-                (entry / "demote_size").write_text(f"{config.demote_size}kB")
+            # FIXME: val >= PMD_SIZE and val < config.hugepage_size
+            # if (entry / "demote_size").exists():
+            #    (entry / "demote_size").write_text(f"{config.demote_size}kB")
 
         # Indicator that the configurations have ben restored
         self.saved = False
