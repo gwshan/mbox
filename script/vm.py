@@ -15,6 +15,7 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -57,14 +58,7 @@ def reserve_hugetlb_mem(size, hpage_size):
             print(f"WARN: Unable to mount {path}")
             return False
 
-    # Check if we had adaquate free huge pages
-    path = Path(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/free_hugepages")
-    free_hugepages = (int)(path.read_text().strip())
-    if free_hugepages >= hpages:
-        return True
-
-    # Reserve extra huge pages
-    hpages -= free_hugepages
+    # Reserve huge pages
     path = Path(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/nr_hugepages")
     nr_hugepages = (int)(path.read_text().strip())
     path.write_text(str(nr_hugepages + hpages))
@@ -171,7 +165,12 @@ def build_command(vm):
             elif mem_type == "file" and mem_path.startswith("hugetlbfs-"):
                 # hugetlbfs
                 size = Util.string_to_size(child.get("size"))
-                hpage_size = Util.string_to_size(mem_path)
+                if mem_path == "hugetlbfs-default":
+                    page_size = os.sysconf("SC_PAGE_SIZE")
+                    hpage_size = (page_size >> 3) * page_size
+                else:
+                    hpage_size = Util.string_to_size(mem_path)
+
                 if hpage_size == 0 or size == 0:
                     continue
 
