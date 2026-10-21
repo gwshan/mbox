@@ -43,7 +43,7 @@
               "type": "file",
               "id": "mem0",
               "size": "2G",
-              "mem-path": "hugetlbfs-2MB"
+              "mem-path": "hugetlbfs-64KB"
             },
             {
               "available": "yes",

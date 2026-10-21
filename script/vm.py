@@ -19,39 +19,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+from lib.util.util import Util
 from lib.mm.hugetlbfs import HugeTLBSetting
-
-def get_mem_size(size="", prefix="", suffix=""):
-    multipliers = {
-        'k': 1024,    'kb': 1024,
-        'm': 1024**2, 'mb': 1024**2,
-        'g': 1024**3, 'gb': 1024**3,
-        't': 1024**4, 'tb': 1024**4
-    }
-
-    # Remove the prefix and suffix
-    if prefix != "":
-        size = size.removeprefix(prefix)
-    if suffix != "":
-        size = size.removesuffix(suffix)
-
-    # Directly conversoin if there is no trailing unit
-    if size.isdigit():
-        return (int)(size)
-
-    # Indirectly conversion with the unit considered
-    match = re.match(r"^([0-9]+)\s*([a-z]+)$", size.strip().lower())
-    if not match:
-        print(f"WARN: Invalid size string <{size}>")
-        return 0
-
-    n = int(match.group(1))
-    unit = match.group(2)
-    if unit not in multipliers:
-        print(f"WARN: Invalid size string <{size}>")
-        return 0
-
-    return (int)(n * multipliers[unit])
 
 def reserve_hugetlb_mem(size, hpage_size):
     # Accumulative number of huge pages
@@ -210,8 +180,8 @@ def build_command(vm):
                 cmd += build_opt(child, "size", ",size=", " ")
             elif mem_type == "file" and mem_path.startswith("hugetlbfs-"):
                 # hugetlbfs
-                hpage_size = get_mem_size(mem_path, "hugetlbfs-", "")
-                size = get_mem_size(child.get("size"), "", "")
+                size = Util.string_to_size(child.get("size"))
+                hpage_size = Util.string_to_size(mem_path)
                 if hpage_size == 0 or size == 0:
                     continue
 
