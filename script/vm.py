@@ -24,11 +24,8 @@ from lib.util.util import Util
 from lib.mm.hugetlbfs import HugeTLBSetting
 
 def reserve_hugetlb_mem(size, hpage_size):
-    # Accumulative number of huge pages
-    if not hasattr(reserve_hugetlb_mem, "hpages"):
-        reserve_hugetlb_mem.hpages = 0
-
     # Convert huge page size to KB
+    hpages = int((size + hpage_size - 1) // hpage_size)
     hpage_size = (int)(hpage_size / 1024)
 
     # Validate the huge page size
@@ -60,24 +57,17 @@ def reserve_hugetlb_mem(size, hpage_size):
             print(f"WARN: Unable to mount {path}")
             return False
 
-    # Accumulative number of the huge pages
-    hpages = int((size + hpage_size * 1024 - 1) / (hpage_size * 1024))
-    reserve_hugetlb_mem.hpages += hpages;
-    hpages = reserve_hugetlb_mem.hpages
-
-    # Check if we already adaquate huge pages
-    with open(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/free_hugepages", 'r') as f:
-        nr_free_hpages = int(f.read().strip())
-
-    if nr_free_hpages >= hpages:
+    # Check if we had adaquate free huge pages
+    path = Path(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/free_hugepages")
+    free_hugepages = (int)(path.read_text().strip())
+    if free_hugepages >= hpages:
         return True
 
-    # Reserve huge pages with the free huge pages resued
-    hpages -= nr_free_hpages
-    with open(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/nr_hugepages", 'r') as f:
-         nr_hpages = int(f.read().strip())
-    with open(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/nr_hugepages", 'w') as f:
-         f.write(str(nr_hpages + hpages))
+    # Reserve extra huge pages
+    hpages -= free_hugepages
+    path = Path(f"/sys/kernel/mm/hugepages/hugepages-{hpage_size}kB/nr_hugepages")
+    nr_hugepages = (int)(path.read_text().strip())
+    path.write_text(str(nr_hugepages + hpages))
 
     return True
 
