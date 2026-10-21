@@ -43,14 +43,14 @@
               "type": "file",
               "id": "mem0",
               "size": "2G",
-              "mem-path": "hugetlbfs-64KB"
+              "mem-path": "hugetlbfs-default"
             },
             {
               "available": "yes",
               "type": "file",
               "id": "mem1",
               "size": "2G",
-              "mem-path": "hugetlbfs-2MB"
+              "mem-path": "hugetlbfs-default"
             }
           ],
           "numa-nodes": [
