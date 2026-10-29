@@ -1,0 +1,195 @@
+
+                          ====================
+                          TF-RMM Boot Sequence
+                          ====================
+
+Auguments passed from TF-A
+==========================
+
+  x0: This CPUID (primary processor), sorted out from MPIDR_EL1
+  x1: Version for RMM-EL3 interface. v2.0 without RMM_V1_COMPAT or v0.8
+      with RMM_V1_COMPAT.
+  x2: Number of total CPUs, defined by PLATFORM_CORE_COUNT
+  x3: Base address for the EL3 <-> RMM shared area. The boot manifest will
+      be stored at the beginning of this area.
+  x4: Opaque activation token, as returned by previous calls
+
+Backtrace
+=========
+rmm_entry
+  rmm_el2_init_env			# VBAR_EL2=el2_vectors
+  plat_setup
+    rmm_el3_ifc_init            	# Initialize RMM-EL3 manifest
+    rmm_el3_ifc_get_console_list_pa	# Initialize console
+    plat_cmn_setup
+      xlat_low_va_setup			# (1) EL0&2 low VA regime
+      gic_get_virt_features
+    arm_set_dram_layout                 # Setup DRAM layout
+    plat_warmboot_setup
+      plat_cmn_warmboot_setup
+        xlat_low_va_mmu_cfg             # (1) EL0&2 low VA regime
+        pcpu_high_va_setup              # (2) EL0&2 high VA regime
+  mec_init_mmu
+  xlat_enable_mmu_el2
+  pcpu_switch_to_high_va
+  pauth_init_enable_el2
+rmm_main
+  firme_init
+  glob_data_init			# Global data (in pcpu area) initialization
+  app_info_setup                        # (3) Application initialization
+  app_framework_setup
+  simd_init
+  vmid_init
+  mec_init_state
+  sro_ctx_init
+  init_all_cpus_ns_simd_context
+  simd_context_save
+  random_app_init_prng
+  attest_app_global_init
+  smmuv3_init
+  rmm_warmboot_main
+    glob_data_init
+    slot_buf_finish_warmboot_init
+    random_app_init_prng
+    attest_app_init_per_cpu_instance
+    s2tt_init
+
+(1) EL0&2 low VA regime
+=======================
+The EL0&2 low VA regime handles direct mapping for RMM image sections where
+the application sections reside. For those direct mappings, their physical
+addresses are same to their virtual address.
+
+       VA
+
+  0x8040000000              +------------------------+
+                            |     MAP_REGION_VA_POOL |
+  0x8000000000              +------------------------+
+                            |           :            |  alignment_SZ_512GB
+  rmm_el3_shared_buf_end    +------------------------+
+                            |     MAP_REGION_SHARED  |  SZ_4K
+  rmm_el3_shared_buf_start  +------------------------+
+                            |           :            |  SZ_4K
+  rmm_rw_end                +------------------------+
+                            |     MAP_REGION_RW      |
+  rmm_rw_start              +------------------------+
+                            |           :            |  alignemnt_SZ_4K
+  rmm_ro_end                +------------------------+
+                            |     MAP_REGION_RO      |
+  rmm_ro_start              +------------------------+
+                            |           :            |  alignment_SZ_4K
+  rmm_text_end              +------------------------+
+                            |     MAP_REGION_CODE    |
+  rmm_text_start            +------------------------+
+                            |     MAP_REGION_APP     |
+  rmm_img_start             +------------------------+
+
+However, MAP_REGION_SHARED and MAP_REGION_VA_POOL are not direct mappings.
+MAP_REGION_SHARED corresponds to the EL3-RMM shared buffer where the boot
+manifest resides. Its virtual address is set to (rmm_rw_end + SZ_4K) and
+the corresponding physical address is determined by TF-A through register
+x0.
+
+MAP_REGION_VA_POOL, corresponding to a region whose virtual start and end
+addresses are fixed, covers the memory returned from the allocator. So the
+corresponding physical memory addresses are dynamic. Note that the allocator
+can be in TF-RMM or TF-A depending on option '-DRMM_EL3_COMPAT_RESERVE_MEM.
+Function xlat_low_va_map() needs to be called to setup the mapping for the
+allocated physical memory chunk.
+
+(2) EL0&2 high VA regime
+========================
+The EL0&2 high VA regime covers per-cpu (PCPU) regions. Every CPU has it
+own EL0&2 page-table. For all PCPU regions, their VA layout and addresses
+for every region are same on each CPU. For example, RMM_SLOT_BUF_MMAP_IDX
+region ends at 0xFFFFFFFF_FFFFFFFF on all CPUs. However, the physical
+addresses for every region are different among CPUs.
+
+           VA
+
+  0xFFFFFFFF_FFFFFFFF       +----------------------------+
+                            |   RMM_SLOT_BUF_MMAP_IDX    |  124 * SZ_4K
+  -(124 * SZ_4K)            +----------------------------+
+                            |           guard            |  SZ_4K
+                            +----------------------------+
+                            | RMM_HIGH_VA_TBLS_MMAP_IDX  |  SZ_4K
+  HIGH_VA_TBLS_BASE_VA      +----------------------------+
+                            |           guard            |  SZ_4K
+                            +----------------------------+
+                            |   RMM_EH_STACK_MMAP_IDX    |  SZ_4K
+  EH_STACK_BASE_VA          +----------------------------+
+                            |           guard            |  SZ_4K
+                            +----------------------------+
+                            |     RMM_STACK_MMAP_IDX     |  5 * SZ_4K
+  STACK_BASE_VA             +----------------------------+
+                            |           guard            |  SZ_4K
+                            +----------------------------+
+                            | RMM_PCPU_PVT_DATA_MMAP_IDX |  SZ_4K
+  PCPU_PVT_DATA_BASE_VA     +----------------------------+
+                            |           guard            |  SZ_4K
+                            +----------------------------+
+                            | RMM_PCPU_METADATA_MMAP_IDX |  SZ_4K
+  PCPU_METADATA_BASE_VA     +----------------------------+
+                            |                            |
+                            |          Unmapped          |
+                            |                            |
+  0xFFFFFFFF_FFE00000       +----------------------------+
+
+For the lower 5 regions, their physical memory chunk is allocated from the
+memory allocator as a bundle. So they're adjacent to each other in physical
+memory space. The header of the allocated memory chunk is depicted by '
+struct pcpu_metadata'. Its corresponding VA or PA is tracked by TPIDR_EL2
+where the lower 12-bits are reserved for CPU index since the VA or PA is
+aligned to SZ_4K at least.
+
+'struct pcpu_metadata::glob_data_pa' is the pointers of PA of global data
+for the corrresponding CPU. It's depicted by 'struct glob_data' where the
+per-cpu objects like SRO contexts are tracked. For those objects, their
+physical memory chunks are dynamically allocated, while their VAs are
+reserved from the MAP_REGION_VA_POOL region of EL0&2 low VA regime.
+
+The region RMM_SLOT_BUF_MMAP_IDX covers the temporary mapping to the NS
+(Non-Secure) physical buffers, which are usually parameters passed by RMI
+calls. The temporary mapping is created and destroyed by buffer_arch_map()
+and buffer_arch_unmap(). The VA of the region is sliced with the granuality
+of granule size and indexed by 'enum buffer_slot'.
+
+(3) Application
+===============
+The VA region starting from 0xFFFFFFFF_FFE00000 of EL0&2 high VA regime
+covers the memory mappings needed for an application instance. Note that
+multiple application instances can be forked from same application. For
+example, RANDOM_APP has per-cpu instance that serves the requests from
+that particular CPU.
+
+
+          VA
+
+                            +------------------------------+
+                            | RMM_APP_STACK_IDX            |
+                            +------------------------------+
+                            | RMM_APP_HEAP_IDX             |
+                            +------------------------------+
+                            | RMM_APP_SHARED_IDX           |
+                            +------------------------------+
+                            | RMM_APP_BSS_MMAP_IDX         |
+                            +------------------------------+
+                            | RMM_APP_DATA_MMAP_IDX        |
+                            +------------------------------+
+                            | RMM_APP_RODATA_MMAP_IDX      |
+                            +------------------------------+
+                            | RMM_APP_TEXT_MMAP_IDX        |
+                            +------------------------------+
+                            | RMM_APP_APP_REG_CTX_MMAP_IDX |  SZ_4K
+  0xFFFFFFFF_FFE00000       +------------------------------+
+
+For TEXT/RODATA/DATA regions, their corrresponding physical memory chunks
+are actually parts of the RMM image. For other regions, the application
+needs to provide the physical memory chunks even though those memory chunks
+could be staticly declared arrays, which also parts of the RMM image.
+
+For those dynamic regions like BSS/HEAP/STACK, their purposes and usages
+are well indicated by their names. The APP_REG_CTX region is depicted by
+'struct app_reg_ctx', tracking the system register values needed by the
+application runtime. APP_SHARED region is used to pass data between RMM
+and the application.
