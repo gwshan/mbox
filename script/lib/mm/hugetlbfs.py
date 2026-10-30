@@ -12,11 +12,20 @@
 #
 
 import os
+import subprocess
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from lib.util.util import Util
+
 HUGETLB_SYSFS_PATH = "/sys/kernel/mm/hugepages"
 HUGETLB_NODE_SYSFS_PATH = "/sys/devices/system/node"
+
+@dataclass
+class HugeTLBFs:
+    hugepage_size: int
+    path: str
 
 @dataclass
 class HugeTLBConfig:
@@ -35,6 +44,7 @@ class HugeTLBNodeConfig:
 
 @dataclass
 class HugeTLBSetting:
+    filesystems: list[HugeTLBFs] = field(default_factory=list)
     configs: list[HugeTLBConfig] = field(default_factory=list)
     node_configs: list[HugeTLBNodeConfig] = field(default_factory=list)
     saved: bool = False
@@ -43,6 +53,24 @@ class HugeTLBSetting:
         # Bail if the configurations have been saved
         if self.saved:
             return
+
+        # Save all mounted hugetlbfs
+        with open("/proc/mounts", "r") as f:
+            for line in f:
+                fields = line.strip().split()
+                if fields[2] != "hugetlbfs":
+                    continue
+
+                hugepage_size = 0
+                idx = fields[3].find("pagesize=")
+                if idx >= 0:
+                    hugepage_size = Util.string_to_size(fields[3][idx + len("pagesize=")])
+
+                if hugepage_size == 0:
+                    page_size = os.sysconf("SC_PAGE_SIZE")
+                    hugepage_size = (page_size >> 3) * page_size
+
+                self.filesystems.append(HugeTLBFs(hugepage_size, fields[1].strip()))
 
         # The base configurations from "/sys/kernel/mm/hugepages"
         root = Path(HUGETLB_SYSFS_PATH)
@@ -143,6 +171,25 @@ class HugeTLBSetting:
                config.demote_size >= default_hugepage_size and \
                config.demote_size < config.hugepage_size:
                 (entry / "demote_size").write_text(f"{config.demote_size}kB")
+
+        # Unmount the excessive filesystems
+        with open("/proc/mounts", "r") as f:
+            for line in f:
+                fields = line.strip().split()
+                if fields[2] != "hugetlbfs":
+                    continue
+
+                pre_exist = False
+                for filesystem in self.filesystems:
+                    if fields[1].strip() == filesystem.path:
+                        pre_exist = True
+                        break
+
+                if not pre_exist:
+                    result = subprocess.run(f"umount {fields[1].strip()}",
+                                            shell=True, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        print(f"WARN: Unable to umount <{fields[1].strip()}>")
 
         # Indicator that the configurations have ben restored
         self.saved = False
