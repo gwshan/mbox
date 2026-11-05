@@ -137,11 +137,16 @@ class HugeTLBSetting:
         page_size = os.sysconf("SC_PAGE_SIZE")
         default_hugepage_size = ((page_size >> 3) * page_size) >> 10
 
-        # The base configurations to "/sys/kernel/mm/hugepages".
-        # For "demote_size", the written value should be equal to
-        # or larger than the default hage page size, and smaller
-        # than the huge page size corresponding to the specific
-        # sysfs entry
+        # The base configurations to "/sys/kernel/mm/hugepages". Not all
+        # the files can be written. The limitations are listed below.
+        #
+        # For "demote_size", the written value should be equal to or larger
+        # than the default hage page size, and smaller than the huge page
+        # size corresponding to the specific sysfs entry.
+        #
+        # For "nr_overcommit_hugepages", it fails to write to those entries
+        # corresponding to gigantic huge pages and the runtime gigantic huge
+        # page isn't enabled.
         root = Path(HUGETLB_SYSFS_PATH)
         while len(self.configs) > 0:
             config = self.configs.pop()
@@ -154,8 +159,13 @@ class HugeTLBSetting:
                 (entry / "nr_hugepages").write_text(f"{config.nr_hugepages}")
             if (entry / "nr_hugepages_mempolicy").exists():
                 (entry / "nr_hugepages_mempolicy").write_text(f"{config.nr_hugepages_mempolicy}")
-            if (entry / "nr_overcommit_hugepages").exists():
-                (entry / "nr_overcommit_hugepages").write_text(f"{config.nr_overcommit_hugepages}")
+
+            fentry = entry / "nr_overcommit_hugepages"
+            if fentry.exists():
+                try:
+                    fentry.write_text(f"{config.nr_overcommit_hugepages}")
+                except OSError:
+                    pass
 
         # Node specific configurations to "/sys/devices/system/node"
         # The requirements for the written value to "demote_size" entry
