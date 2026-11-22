@@ -1,0 +1,10 @@
+
+                                    Index
+                                    =====
+
+vmx
+
+Driver exposing /dev/test where arbitrary ioctl command is received to intercept
+application's execution flow by executing a pre-defined chunk of guest code with
+intel vmx partition.
+ 
